@@ -1,6 +1,6 @@
 import os
 import logging
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 logging.basicConfig(
@@ -8,16 +8,19 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+# Главная клавиатура
+main_keyboard = ReplyKeyboardMarkup(
+    [["🛎 Услуги", "📅 Запись"]],
+    resize_keyboard=True
+)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
     text = (
         f"👋 Привет, <b>{name}</b>!\n\n"
-        f"Я твой Telegram-бот. Вот что я умею:\n\n"
-        f"📌 /start — показать это сообщение\n"
-        f"❓ /help  — помощь\n\n"
-        f"Просто напиши мне любое сообщение!"
+        f"Выбери что тебя интересует:"
     )
-    await update.message.reply_text(text, parse_mode="HTML")
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_keyboard)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
@@ -25,22 +28,39 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Доступные команды:\n"
         "• /start — запустить бота\n"
         "• /help  — показать это сообщение\n\n"
-        "Ты также можешь просто <b>написать любой текст</b> — я отвечу!"
+        "Или используй кнопки внизу экрана."
     )
-    await update.message.reply_text(text, parse_mode="HTML")
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_keyboard)
 
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    reply = (
-        f"💬 Ты написал:\n<i>{text}</i>\n\n"
-        f"Эхо от бота! Используй /help чтобы увидеть команды."
-    )
-    await update.message.reply_text(reply, parse_mode="HTML")
 
-async def unknown_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📎 Я получил твой файл/медиа, но пока умею обрабатывать только текст."
-    )
+    if text == "🛎 Услуги":
+        await update.message.reply_text(
+            "🛎 <b>Наши услуги:</b>\n\n"
+            "• Услуга 1\n"
+            "• Услуга 2\n"
+            "• Услуга 3\n\n"
+            "Напиши нам для подробностей!",
+            parse_mode="HTML",
+            reply_markup=main_keyboard
+        )
+
+    elif text == "📅 Запись":
+        await update.message.reply_text(
+            "📅 <b>Запись:</b>\n\n"
+            "Чтобы записаться, напиши своё имя и удобное время.\n\n"
+            "Мы свяжемся с тобой в ближайшее время!",
+            parse_mode="HTML",
+            reply_markup=main_keyboard
+        )
+
+    else:
+        await update.message.reply_text(
+            f"💬 Ты написал: <i>{text}</i>\n\nИспользуй кнопки внизу 👇",
+            parse_mode="HTML",
+            reply_markup=main_keyboard
+        )
 
 def main():
     token = os.environ.get("BOT_TOKEN")
@@ -50,8 +70,7 @@ def main():
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-    app.add_handler(MessageHandler(~filters.TEXT, unknown_media))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
 
     print("🤖 Бот запущен. Нажми Ctrl+C для остановки.")
     app.run_polling(stop_signals=None)
