@@ -1,14 +1,13 @@
 import os
 import logging
-import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
- 
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
- 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
     text = (
@@ -19,7 +18,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Просто напиши мне любое сообщение!"
     )
     await update.message.reply_text(text, parse_mode="HTML")
- 
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "<b>📚 Помощь</b>\n\n"
@@ -29,7 +28,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Ты также можешь просто <b>написать любой текст</b> — я отвечу!"
     )
     await update.message.reply_text(text, parse_mode="HTML")
- 
+
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     reply = (
@@ -37,25 +36,25 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Эхо от бота! Используй /help чтобы увидеть команды."
     )
     await update.message.reply_text(reply, parse_mode="HTML")
- 
+
 async def unknown_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📎 Я получил твой файл/медиа, но пока умею обрабатывать только текст."
     )
- 
-async def main():
+
+def main():
     token = os.environ.get("BOT_TOKEN")
     if not token:
         raise ValueError("❌ BOT_TOKEN не найден.")
- 
+
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
     app.add_handler(MessageHandler(~filters.TEXT, unknown_media))
- 
+
     print("🤖 Бот запущен. Нажми Ctrl+C для остановки.")
-    await app.run_polling()
- 
+    app.run_polling(stop_signals=None)
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
