@@ -7,8 +7,12 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 DIKIDI_URL = "https://dikidi.ru/1143469"
 
+MAPS_URL = "https://yandex.ru/maps/org/body_aesthetics_club/150933116041/?ll=42.049249%2C55.578045&z=16"
+PHONE = "+79038322021"
+
 main_keyboard = ReplyKeyboardMarkup(
-    [["🛎 Услуги", "📅 Запись"]],
+    [["🛎 Услуги", "📅 Запись"],
+     ["📞 Связаться с нами", "🗺 Как добраться?"]],
     resize_keyboard=True
 )
 
@@ -184,6 +188,27 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=keyboard
         )
+    elif text == "📞 Связаться с нами":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📞 Позвонить", url=f"tel:{PHONE}")],
+            [InlineKeyboardButton("✈️ Написать в Telegram", url=f"https://t.me/{PHONE.replace('+', '')}")],
+        ])
+        await update.message.reply_text(
+            f"📞 <b>Связаться с нами</b>\n\nТелефон: <b>{PHONE}</b>\n\nВыбери удобный способ 👇",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
+    elif text == "🗺 Как добраться?":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🗺 Открыть в Яндекс Картах", url=MAPS_URL)]
+        ])
+        await update.message.reply_text(
+            "🗺 <b>Как добраться?</b>\n\nНажми кнопку ниже — откроется маршрут в Яндекс Картах 👇",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
     else:
         await update.message.reply_text(
             "Используй кнопки внизу 👇",
