@@ -190,11 +190,12 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif text == "📞 Связаться с нами":
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📞 Позвонить", url=f"tel:{PHONE}")],
-            [InlineKeyboardButton("✈️ Написать в Telegram", url=f"https://t.me/{PHONE.replace('+', '')}")],
+            [InlineKeyboardButton("✈️ Написать в Telegram", url="https://t.me/+79038322021")],
         ])
         await update.message.reply_text(
-            f"📞 <b>Связаться с нами</b>\n\nТелефон: <b>{PHONE}</b>\n\nВыбери удобный способ 👇",
+            "📞 <b>Связаться с нами</b>\n\n"
+            "📱 Телефон: <b>8 903 832 20 21</b>\n\n"
+            "Позвони нам или напиши в Telegram 👇",
             parse_mode="HTML",
             reply_markup=keyboard
         )
