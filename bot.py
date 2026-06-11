@@ -1,22 +1,55 @@
 import os
+import json
 import logging
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 DIKIDI_URL = "https://dikidi.ru/1143469"
-
-MAPS_URL = "https://yandex.ru/maps/org/body_aesthetics_club/150933116041/?ll=42.049249%2C55.578045&z=16"
 PHONE = "+79038322021"
+MAPS_URL = "https://yandex.ru/maps/org/body_aesthetics_club/150933116041/?ll=42.049249%2C55.578045&z=16"
+ADMIN_IDS = [7110293336]
 
+# ─── Состояния для ConversationHandler ────────────────────────────────────────
+WAIT_MASTER_NAME, WAIT_MASTER_ROLE, WAIT_DEL_MASTER = range(3)
+
+# ─── Данные (загружаются из файла или дефолтные) ──────────────────────────────
+DEFAULT_MASTERS = [
+    {"name": "💆 Никотин Александр", "role": "Мастер ручного массажа"},
+    {"name": "💅 Зайцева Юлия", "role": "Мастер по депиляции"},
+    {"name": "💆 Устинова Анастасия", "role": "Мастер ручного и аппаратного массажа"},
+    {"name": "⚡ Ткачёва Оксана", "role": "Мастер аппаратного массажа"},
+    {"name": "✨ Лексина Анастасия", "role": "Мастер"},
+    {"name": "🌸 Порхачёва Екатерина", "role": "Косметолог-эстетист"},
+    {"name": "⭐ Гагаринская Марина", "role": "Старший мастер"},
+]
+
+DATA_FILE = "data.json"
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"masters": DEFAULT_MASTERS}
+
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# ─── Клавиатуры ───────────────────────────────────────────────────────────────
 main_keyboard = ReplyKeyboardMarkup(
     [["🛎 Услуги", "📅 Запись"],
      ["📞 Связаться с нами", "🗺 Как добраться?"]],
     resize_keyboard=True
 )
 
-# ─── Категории услуг ──────────────────────────────────────────────────────────
+admin_keyboard = ReplyKeyboardMarkup(
+    [["👨‍💼 Мастера", "📊 Статистика"],
+     ["🔙 Выйти из админки"]],
+    resize_keyboard=True
+)
+
 SERVICES = {
     "massage": {
         "name": "💆 Ручной массаж",
@@ -135,59 +168,87 @@ SERVICES = {
     },
 }
 
-MASTERS = [
-    ("💆 Никотин Александр", "Мастер ручного массажа"),
-    ("💅 Зайцева Юлия", "Мастер по депиляции"),
-    ("💆 Устинова Анастасия", "Мастер ручного и аппаратного массажа"),
-    ("⚡ Ткачёва Оксана", "Мастер аппаратного массажа"),
-    ("✨ Лексина Анастасия", "Мастер"),
-    ("🌸 Порхачёва Екатерина", "Косметолог-эстетист"),
-    ("⭐ Гагаринская Марина", "Старший мастер"),
-]
+# ─── Счётчик статистики ───────────────────────────────────────────────────────
+stats = {"users": set(), "messages": 0}
 
-# ─── Команды ──────────────────────────────────────────────────────────────────
+def is_admin(user_id):
+    return user_id in ADMIN_IDS
+
+# ─── Основные команды ─────────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    stats["users"].add(update.effective_user.id)
+    stats["messages"] += 1
     name = update.effective_user.first_name
-    text = (
-        f"👋 Привет, <b>{name}</b>!\n\n"
-        f"Добро пожаловать в <b>Body Aesthetics Club</b>!\n\n"
-        f"Выбери что тебя интересует 👇"
-    )
-    await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_keyboard)
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "<b>📚 Помощь</b>\n\n"
-        "• 🛎 <b>Услуги</b> — каталог услуг по категориям\n"
-        "• 📅 <b>Запись</b> — записаться к мастеру онлайн\n\n"
-        "По любым вопросам пиши нам!",
+        f"👋 Привет, <b>{name}</b>!\n\nДобро пожаловать в <b>Body Aesthetics Club</b>!\n\nВыбери что тебя интересует 👇",
         parse_mode="HTML", reply_markup=main_keyboard
     )
 
-# ─── Кнопки ───────────────────────────────────────────────────────────────────
+async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ У тебя нет доступа к админ-панели.")
+        return
+    await update.message.reply_text(
+        "🔐 <b>Админ-панель</b>\n\nДобро пожаловать! Выбери раздел 👇",
+        parse_mode="HTML", reply_markup=admin_keyboard
+    )
+
+# ─── Обработка кнопок ─────────────────────────────────────────────────────────
 async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    user_id = update.effective_user.id
+    stats["messages"] += 1
+    stats["users"].add(user_id)
 
+    # ── Админ-кнопки ──
+    if text == "👨‍💼 Мастера" and is_admin(user_id):
+        data = load_data()
+        masters = data["masters"]
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(f"❌ {m['name']}", callback_data=f"delmaster_{i}")]
+             for i, m in enumerate(masters)] +
+            [[InlineKeyboardButton("➕ Добавить мастера", callback_data="addmaster")]]
+        )
+        text_out = "<b>👨‍💼 Мастера</b>\n\nНажми ❌ чтобы удалить или добавь нового 👇\n\n"
+        for m in masters:
+            text_out += f"• {m['name']} — {m['role']}\n"
+        await update.message.reply_text(text_out, parse_mode="HTML", reply_markup=keyboard)
+        return
+
+    if text == "📊 Статистика" and is_admin(user_id):
+        await update.message.reply_text(
+            f"📊 <b>Статистика бота</b>\n\n"
+            f"👥 Уникальных пользователей: <b>{len(stats['users'])}</b>\n"
+            f"💬 Всего сообщений: <b>{stats['messages']}</b>",
+            parse_mode="HTML", reply_markup=admin_keyboard
+        )
+        return
+
+    if text == "🔙 Выйти из админки" and is_admin(user_id):
+        await update.message.reply_text("Вышел из админки 👋", reply_markup=main_keyboard)
+        return
+
+    # ── Обычные кнопки ──
     if text == "🛎 Услуги":
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(v["name"], callback_data=f"cat_{k}")]
             for k, v in SERVICES.items()
         ])
-        await update.message.reply_text(
-            "Выбери категорию услуг 👇",
-            reply_markup=keyboard
-        )
+        await update.message.reply_text("Выбери категорию услуг 👇", reply_markup=keyboard)
 
     elif text == "📅 Запись":
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"{name} — {role}", callback_data=f"master_{i}")]
-            for i, (name, role) in enumerate(MASTERS)
-        ] + [[InlineKeyboardButton("📅 Записаться (выбрать самому)", url=DIKIDI_URL)]])
+        data = load_data()
+        masters = data["masters"]
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(f"{m['name']} — {m['role']}", callback_data=f"master_{i}")]
+             for i, m in enumerate(masters)] +
+            [[InlineKeyboardButton("📅 Записаться (выбрать самому)", url=DIKIDI_URL)]]
+        )
         await update.message.reply_text(
             "📅 <b>Запись к мастеру</b>\n\nВыбери мастера или запишись самостоятельно 👇",
-            parse_mode="HTML",
-            reply_markup=keyboard
+            parse_mode="HTML", reply_markup=keyboard
         )
+
     elif text == "📞 Связаться с нами":
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✈️ Написать в Telegram", url="https://t.me/+79038322021")],
@@ -196,8 +257,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📞 <b>Связаться с нами</b>\n\n"
             "📱 Телефон: <b>8 903 832 20 21</b>\n\n"
             "Позвони нам или напиши в Telegram 👇",
-            parse_mode="HTML",
-            reply_markup=keyboard
+            parse_mode="HTML", reply_markup=keyboard
         )
 
     elif text == "🗺 Как добраться?":
@@ -206,20 +266,18 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         await update.message.reply_text(
             "🗺 <b>Как добраться?</b>\n\nНажми кнопку ниже — откроется маршрут в Яндекс Картах 👇",
-            parse_mode="HTML",
-            reply_markup=keyboard
+            parse_mode="HTML", reply_markup=keyboard
         )
 
     else:
-        await update.message.reply_text(
-            "Используй кнопки внизу 👇",
-            reply_markup=main_keyboard
-        )
+        await update.message.reply_text("Используй кнопки внизу 👇", reply_markup=main_keyboard)
 
+# ─── Callback обработчики ─────────────────────────────────────────────────────
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+    user_id = query.from_user.id
 
     if data.startswith("cat_"):
         key = data[4:]
@@ -227,12 +285,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines = [f"<b>{cat['name']}</b>\n"]
         for name, duration, price in cat["items"]:
             lines.append(f"• {name}\n  ⏱ {duration} | 💰 {price} руб.")
-        text = "\n".join(lines)
         back_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("📅 Записаться онлайн", url=DIKIDI_URL)],
             [InlineKeyboardButton("◀️ Назад к категориям", callback_data="back_cats")],
         ])
-        await query.edit_message_text(text, parse_mode="HTML", reply_markup=back_keyboard)
+        await query.edit_message_text("\n".join(lines), parse_mode="HTML", reply_markup=back_keyboard)
 
     elif data == "back_cats":
         keyboard = InlineKeyboardMarkup([
@@ -243,9 +300,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("master_"):
         idx = int(data[7:])
-        name, role = MASTERS[idx]
+        masters = load_data()["masters"]
+        m = masters[idx]
         await query.edit_message_text(
-            f"<b>{name}</b>\n{role}\n\nНажми кнопку ниже чтобы записаться 👇",
+            f"<b>{m['name']}</b>\n{m['role']}\n\nНажми кнопку ниже чтобы записаться 👇",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📅 Записаться онлайн", url=DIKIDI_URL)],
@@ -254,15 +312,56 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "back_masters":
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"{name} — {role}", callback_data=f"master_{i}")]
-            for i, (name, role) in enumerate(MASTERS)
-        ] + [[InlineKeyboardButton("📅 Записаться (выбрать самому)", url=DIKIDI_URL)]])
+        masters = load_data()["masters"]
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(f"{m['name']} — {m['role']}", callback_data=f"master_{i}")]
+             for i, m in enumerate(masters)] +
+            [[InlineKeyboardButton("📅 Записаться (выбрать самому)", url=DIKIDI_URL)]]
+        )
         await query.edit_message_text(
             "📅 <b>Запись к мастеру</b>\n\nВыбери мастера 👇",
-            parse_mode="HTML",
-            reply_markup=keyboard
+            parse_mode="HTML", reply_markup=keyboard
         )
+
+    elif data == "addmaster" and is_admin(user_id):
+        context.user_data["adding_master"] = True
+        await query.edit_message_text(
+            "➕ <b>Добавление мастера</b>\n\nВведи имя мастера (например: Иванова Мария):",
+            parse_mode="HTML"
+        )
+        return WAIT_MASTER_NAME
+
+    elif data.startswith("delmaster_") and is_admin(user_id):
+        idx = int(data[10:])
+        db = load_data()
+        removed = db["masters"].pop(idx)
+        save_data(db)
+        await query.edit_message_text(
+            f"✅ Мастер <b>{removed['name']}</b> удалён.",
+            parse_mode="HTML"
+        )
+
+# ─── ConversationHandler для добавления мастера ───────────────────────────────
+async def wait_master_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["new_master_name"] = update.message.text
+    await update.message.reply_text("Теперь введи должность (например: Мастер ручного массажа):")
+    return WAIT_MASTER_ROLE
+
+async def wait_master_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = context.user_data.get("new_master_name", "")
+    role = update.message.text
+    db = load_data()
+    db["masters"].append({"name": name, "role": role})
+    save_data(db)
+    await update.message.reply_text(
+        f"✅ Мастер <b>{name}</b> — {role} добавлен!",
+        parse_mode="HTML", reply_markup=admin_keyboard
+    )
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Отменено.", reply_markup=admin_keyboard)
+    return ConversationHandler.END
 
 # ─── Запуск ───────────────────────────────────────────────────────────────────
 def main():
@@ -271,10 +370,21 @@ def main():
         raise ValueError("❌ BOT_TOKEN не найден.")
 
     app = Application.builder().token(token).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(handle_callback, pattern="^addmaster$")],
+        states={
+            WAIT_MASTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, wait_master_name)],
+            WAIT_MASTER_ROLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, wait_master_role)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
+    app.add_handler(CommandHandler("admin", admin_cmd))
+    app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
 
     print("🤖 Бот запущен.")
     app.run_polling(stop_signals=None)
